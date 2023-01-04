@@ -1,0 +1,207 @@
+---
+title: "Analiza przestępczości w USA z użyciem metod statystyki opisowej"
+author: "Mateusz Stasiak 262339, Karolina Wypych 262333"
+date: "2022-11-28"
+output:
+  pdf_document:
+    number_sections: true
+    toc: true
+toc-title : "Spis treści"
+header-includes:
+  - \usepackage{graphicx}
+  - \usepackage{float}
+  - \floatplacement{figure}{H}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("guns.R", local = knitr::knit_global())
+pdf.options(encoding='CP1250')
+```
+
+# Wprowadzenie
+Przestępczość i zmaganie się z nią są nieodłącznym elementem każdego społeczeństwa. Każdego roku, w skutek popełniania karalnych czynów, ludzie tracą mienie, zdrowie a nawet życie. Zjawisko to jest bardzo zróżnicowane między krajami i ma wiele przyczyn. Chcąc badać jak poszczególne czynniki wpływają na poziom przestępczości, można szukać zależności pomiędzy danymi poprzez użycie metod statystyki opisowej i graficznej wizualizacji danych na różnego typu wykresach. Takie dane można pozyskać z wielu źródeł, a niniejszy raport oparty jest na danych ogólnodostępnych w internecie. Do przeprowadzenia analizy dostępny jest szeroki wachlarz narzędzi,  a tu wykorzystano do tego język R wraz z jego bibliotekami ggplot2, dplyr i tidyr.
+
+# Dane
+Dane do raportu pozyskano ze strony internetowej \url{https://vincentarelbundock.github.io/Rdatasets/datasets.html}. Dotyczą one przestępczości w Stanach Zjednoczonych Ameryki w latach $1977-1999$. Składają się z $1173$ obserwacji. Każdą z nich opisano poprzez $13$ zmiennych.
+ 
+## Opis zmiennych
+
+```{=Latex}
+\begin{table}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{|c|c|c|c|}
+\hline
+Nazwa zmiennej & Opis zmiennej & Rodzaj zmiennej & Typ zmiennej \\ \hline
+state & \begin{tabular}[c]{@{}c@{}}jeden z 50 stanów USA lub Dystrykt Kolumbii \\ (potocznie zwany Waszyngton, D.C.)\end{tabular} & kategoryczna & str \\ \hline
+year & rok od 1977 do 1999 & kategoryczna & int \\ \hline
+violent & \begin{tabular}[c]{@{}c@{}}współczynnik brutalnych przestępstw \\ (liczba zdarzeń w przeliczeniu na 100 tys. mieszkańców)\end{tabular} & ciągła & float \\ \hline
+murder & \begin{tabular}[c]{@{}c@{}}współczynnik morderstw \\ (liczba zdarzeń w przeliczeniu na 100 tys. mieszkańców)\end{tabular} & ciągła & float \\ \hline
+prisoners & \begin{tabular}[c]{@{}c@{}}współczynnik więźniów \\ (w przeliczeniu na 100 tys. mieszkańców, liczona na poprzedni rok)\end{tabular} & ciągła & float \\ \hline
+afam & procent populacji jaki stanowią Afroamerykanie w wieku od 10 do 64 lat & ciągła & float \\ \hline
+cauc & procent populacji pochodzenia kaukaskiego w wieku od 10 do 64 lat & ciągła & float \\ \hline
+male & procent populacji jaki stanowią mężczyźni w wieku od 10 do 29 lat & ciągła & float \\ \hline
+population & populacja stanu, liczona w milionach & ciągła & float \\ \hline
+income & średnie zarobki mieszkańca stanu wyrażone w dolarach amerykańskich & ciągła & float \\ \hline
+density & gęstość zaludnienia, liczona na milę i dzielona przez 1000 & ciągła & float \\ \hline
+law & \begin{tabular}[c]{@{}c@{}}informacja czy w danym stanie funkcjonuje prawo do posiadania broni,\\  przyjmuje wartość "yes" lub "no"\end{tabular} & kategoryczna & str \\ \hline
+\end{tabular}%
+}
+\end{table}
+```
+
+## Wczytanie danych
+Dane zostały wczytane z pliku .csv za pomocą funkcji read.table(). Jako argumenty należy podać separator oraz informację, że dane zawierają nagłówki. Definiujemy również listę wartości, które uznajemy za brak danych.
+```{r, echo=TRUE}
+guns <- read.table("guns.csv", 
+                   sep=",",
+                   header=TRUE,
+                   row.names = 1,
+                   na.strings = c("","NA","NaN"))
+
+sum(is.na(guns))
+mean(is.na(guns))
+
+guns <- na.omit(guns)
+```
+Dzięki złożeniu funkcji sum(is.na()) wiemy, że nasze dane zawierają 6 braków. Stanowi to zaledwie $0.039\%$ wszystkich informacji. Zatem bez straty ogólności możemy w dalszej analizie pominąć wszystkie niekompletne rzędy obserwacji.
+
+
+# Cel raportu
+Przeprowadzane analizy mają prowadzić do odpowiedzi na kilka pytań badawczych związanych z przestępczością w Stanach Zjednoczonych Ameryki. W pracy zostaną omówione następujące zagadnienia:
+
+- Znalezienie najbardziej niebezpiecznego stanu i przyczyny tego zjawiska
+- Analiza poziomu przestępczości na przestrzeni lat
+- Zbadanie wpływu prawa do posiadania broni na poziom przestępczości
+- Rozważenie wpływu procentowego udziału Afroamerykanów w społeczeństwie na poziom przestępczości.
+- Analiza zależności poziomu przestępczości od liczby osadzonych w więzieniach
+- Sprawdzenie wpływu wysokości pensji mieszkańców stanu na poziom przestępczości
+
+
+
+# Część I
+Pierwsza część raportu skupia się na badaniach współczynników morderstw w zależności od czynników, na które ogół społeczeństwa nie ma bezpośredniego wpływu. Zmiennymi objaśnianymi są w tym przypadku poszczególne stany USA, lata z okresu $1977-1999$ oraz status prawa do posiadania broni.
+
+## Poszukiwanie najbardziej niebezpiecznego stanu
+Realizację głównych założeń raportu rozpoczęto od analizy danych mającej na celu znalezienie najbardziej niebezpiecznego stanu w USA.  By to osiągnąć, wyznaczono średnie współczynniki morderstw i brutalnych przestępstw dla poszczególnych stanów w latach $1977-1799$. Otrzymane wyniki zwizualizowano na wykresie słupkowym, dobrze ilustrującym różnice między analizowanymi wartościami.
+
+```{r, fig.cap = "\\label{fig:bar_stan_m} Średni współczynnik morderstw w poszczególnych stanach w latach 1977–1999.", echo=FALSE, fig.height=4}
+bar_state_murder
+```
+
+```{r, fig.cap = "\\label{fig:bar_stan_v} Średni współczynnik brutalnych przestępstw w poszczególnych stanach w latach 1977–1999.", echo=FALSE, fig.height=4}
+bar_state_violent
+```
+
+Na pierwszy rzut oka widać, że do największej liczby morderstw i brutalnych przestępstw dochodzi w Dystrykcie Kolumbii (zwanym także Waszyngtonem lub D.C.). Pod względem ilości popełnionych morderstw stan ten ponad trzykrotnie przewyższa zajmującą drugie miejsce Louisianę (rysunek \ref{fig:bar_stan_m}). W pozostałych stanach w przeliczeniu na 100 tysięcy mieszkańców zazwyczaj nie dochodziło do zamordowania więcej niż $15$ osób. 
+
+Dużą dysproporcję zaobserwowano także na rysunku \ref{fig:bar_stan_v}, gdzie w Waszyngtonie na tę samą liczbę obywateli przypada ponad 2 tysiące brutalnych przestępstw, co dwukrotnie przewyższa drugi najwyższy współczynnik równy około $1000$ we Florydzie.
+
+Dodatkowo, poziom niebezpieczeństwa w D.C. podkreśla wzięcie pod uwagę średnich i odchyleń standardowych policzonych dla pozostałych stanów. Podczas gdy pierwsza z miar wynosi $6.828756$ dla morderstw i $512.1138$ dla brutalnych przestępstw a druga odpowiednio  $3.484$ i $233.1348$, widać, jak bardzo wartości waszyngtonu odbiegają od pozostałych stanów.
+
+Tak duża różnica między Dystryktem Kolumbii a resztą kraju pozwala spełnić jeden z celów raportu i  wysnuć wniosek, że jest to najbrutalniejszy z regionów. Wykonane powyżej analizy dają do zrozumienia, że znacząco zawyża statystyki i może dawać mocno zafałszowany obraz sytuacji w pozostałych stanach. Ponieważ, chcąc odpowiedzieć na postawione na początku pracy pytania, wykorzystane zostaną statystyki nieodporne na duże obserwacje, najlepiej będzie rozważyć dane zredukowane o wartości dla Waszyngtonu.
+
+## Analiza poziomu przestępczości na przestrzeni lat
+W analizie współczynników brutalnych przestępstw nie sposób pominąć obliczenia ich średnich w USA w poszczególnych latach. Ponieważ w  poprzednim paragrafie pokazano, że bardziej wiarygodne wyniki dla ogółu USA dostanie się po wyeliminowaniu ze zbioru danych Dystryktu Kolumbii, poniższe wykresy wygenerowano uwzględniając tylko pozostałe $50$ stanów.
+
+```{r, fig.cap = "\\label{fig:bar_year_v} Średni współczynnik brutalnych przestępstw we wszystkich stanach USA oprócz Waszyngtonu w latach 1977-1999.", echo=FALSE, fig.height=3}
+bar_year_DC_violent
+```
+
+Na wykresie \ref{fig:bar_year_v} przedstawiającym średni współczynnik brutalnych przestępstw w poszczególnych latach widać, że miał on okresy wzrostów i spadków, ale średnio wyższe wartości przyjmował w ostatniej dekadzie XX wieku. Najwięcej zbrodni przypada na czas między 1990 a 1995 rokiem, z najwyższą wartością odnotowaną w 1993 roku. Średnia wysokość tego współczynnika w rozpatrywanym okresie to $472.1566$, a z uwzględnieniem Waszyngtonu otrzymano by $503.0747$, co jedynie potwierdza zasadność wyeliminowania go z tych rozważań. 
+
+```{r, fig.cap = "\\label{fig:bar_year_m} Średni współczynnik morderstw we wszystkich stanach USA oprócz Waszyngtonu w latach 1977-1999.", echo=FALSE, fig.height=3}
+bar_year_DC_murder
+```
+
+Nieco inaczej sytuacja przedstawia się dla współczynnika morderstw. Od razu wykres \ref{fig:bar_year_m} przypomina lustrzane odbicie wykresu \ref{fig:bar_year_v}. Tym razem najwięcej przestępstw przypada na okres między 1977 a 1982 rokiem ze szczytem w 1980. Natomiast w kolejnej dekadzie najwyższe wartości odnotowano w latach 1990-1994.
+Analizując oba wykresy, ciężko mówić o wyraźnym trendzie dla któregokolwiek współczynnika. Można jednak zauważyć, że w latach 80. wysoką liczbę zamordowanych „neutralizowała” niższa wartość dla brutalnych przestępstw. Natomiast lata 90. w obu przypadkach rozpoczynają się od wzrostu przestępczości i w okolicach roku 1993 współczynniki osiągały najwyższe wartości w całej dekadzie. Od 1995 obserwuje się wyraźny spadek dla obu współczynników, u podstawy czego może leżeć wiele przyczyn. Jedną z nich jest niewątpliwie zwiększenie w latach 90. liczby zatrudnionych policjantów, którzy zasilając różne jednostki, mogli sprawniej kontrolować przestrzeganie prawa i chronić obywateli. Kolejnym istotnym faktem jest podpisanie przez prezydenta Billa Clintona 16 września 1994r. ustawy o kontroli przestępczości i egzekwowaniu prawa z użyciem przemocy, co zaowocowało miliardami dolarów wydanych na poprawę wydajności organów ścigania i programów zapobiegania przestępczości.
+
+## Wpływ prawa do posiadania broni na poziom przestępczości
+Prawo dostępu do broni różni się w zależności od kraju. Polskie ustawy, podobnie jak w wielu innych państwach, nakładają na nie znaczne ograniczenia. Natomiast w niektórych krajach posiadanie broni jest bardziej liberalne i to do tej grupy zaliczają się właśnie omawiane Stany Zjednoczone. W zależności od stanu daje obywatelom większą lub mniejszą swobodę nabywania broni i posługiwania się nią. W pewnych regionach zakup odbywa się po okazaniu dowodu tożsamości i przejrzeniu przeszłości kryminalnej, a w innych konieczne jest specjalne zezwolenie oraz zarejestrowanie broni. Nieujednolicone są także przepisy określające swobodę poruszania się z bronią i w zależności od stanu ma się z nią wstęp do mniejszej lub większej liczby instytucji. Prawo to obejmuje również dzieci, których liczny odsetek zabiera ją do szkoły. Powszechny dostęp do broni zwiększył możliwości nabycia jej przez potencjalnych zbrodniarzy. Z tego powodu państwo dążyło do kontrolowania w tej kwestii swoich obywateli, czego przykładem jest uchwalona w 1993 roku Ustawa Bardy’ego. Wprowadziła m.in. pięciodniowy okres między zgłoszeniem chęci kupna broni a jej otrzymaniem, który wykorzystywano na zbadania przeszłości potencjalnego posiadacza broni.
+
+By sprawdzić czy istnieje zależność między omawianym prawem dostępu do broni a liczbą popełnianych przestępstw, sporządzono wykres słupkowy przedstawiający wysokości trzech współczynników: morderstw, rabunków i brutalnych przestępstw w zależności od legalności posiadania broni. Ponieważ w trakcie rozważanego okresu część stanów zmieniała swoje prawo, średnie zostały policzone za każdym razem oddzielnie dla czasu obowiązywania i nieobowiązywania tego prawa. Chcąc zaprezentować jak najbardziej wiarygodne wyniki, w rozważaniach ponownie pominięto Waszyngton.
+
+```{r, fig.cap = "\\label{fig:bar_law_DC} Średnie współczynniki przestępstw dla wszystkich stanów bez Waszyngtonu w zależności od prawa do posiadania broni.", echo=FALSE, fig.height=3}
+bar_law_DC
+```
+
+Dane przedstawione na wykresie \ref{fig:bar_law_DC} pokazują, że w stanie w którym obywatele mają prawo do posiadania broni, wszystkie współczynniki są na niższym poziomie. Niezależnie od statusu tego przepisu najmniejszy udział w ogólnej przestępczości mają morderstwa, dużo liczniejszą grupę stanowią rabunki i za każdym razem ponad trzykrotnie przewyższają ją brutalne przestępstwa. Średni współczynnik morderstw w stanach z prawem do posiadania broni i bez niego to kolejno  $5.2839$ i $7.3403$ , brutalnych przestępstw $381.0509$ io $501.4937$ , a kradzieży  $97.8986$ i $158.4383$. Fakt ten nasuwa wniosek, że wprowadzenie prawa do posiadania broni ma wyraźny wkład w redukowanie poziomu przestępczości. Może to wynikać z tego, że potencjalni sprawcy, mając świadomość, że posiadanie broni przez ofiarę zagraża ich życiu, rezygnują z dopuszczenia się przestępstwa. Atakując osobę uzbrojoną, nie tylko obniżają prawdopodobieństwo osiągnięcia swojego celu, ale także zwiększają szanse na bycie obezwładnionymi i wydanymi w ręce policji. Ponadto przedstawiony wykres potwierdza skuteczność Ustawy Bardy'ego, która utrudniała osobom z kryminalną przeszłością pozyskanie broni do kolejnego ataku.
+
+# Część II
+W poprzednim paragrafie skoncentrowano się na zbadaniu wysokości współczynnika przestępczości w zależności od stanu i roku oraz wpływu prawa do posiadania broni na liczbę popełnianych czynów karalnych. Ważnym krokiem było znalezienie najbardziej niebezpiecznego stanu, co wpłynęło na dane użyte podczas przeprowadzania dalszych analiz.
+
+Ten rozdział natomiast skupi się na wpływie czynników związanych z zasobami ludzkmi i próbie ustalenia, dlaczego Dystrykt Kolumbijski jest najniebezpieczniejszym ze stanów.
+
+## Wpływ Afroamerykanów na poziom przestępczości
+Chcąc zrealizować wyżej postawione cele, w pierwszej kolejności zwizualizowano zależność pomiędzy populacją Afroamerykanów w danym stanie a odpowiadającą jej wartością współczynnika morderstw. Kolorem zaznaczono jego najniższe wartości oraz dwa stany o charakterystycznym ułożeniu punktów na wykresie.
+
+```{r, fig.cap = "\\label{fig:scatter_afam_murder} Współczynnik morderstw w USA w zależności od udziału Afroamerykanów w populacji stanu.", echo=FALSE, fig.height=4}
+scatter_afam_murder
+```
+
+Z danych przedstawionych na wykresie \ref{fig:scatter_afam_murder} od razu można odczytać, że najwyższy odsetek populacji Afroamerykanów zamieszkuje D.C. Choć wartość współczynnika morderstw jest tam mocno zróżnicowana, to na tle innych stanów przyjmuje wysokie wartości. Związek pomiędzy dużą liczbą morderstw i liczną grupą Afroamerykanów nie nasuwa jednakże jednoznacznego wniosku, bowiem grupa ta może być zarówno agresorem, jak i ofiarą. Drugim stanem wyróżniającym się na sporządzonym wykresie są Hawaje, gdzie wysoki odsetek Afroamerykanów w tamtejszej społeczności idzie w parze z niską liczbą zabitych osób. Dane dla pozostałej części USA tworzą skupisko, u którego podstawy leżą obserwacje o najniższym współczynniku morderstw. Przez zaznaczenie ich innym kolorem widać, że pochodzą one z Vermont, Dakoty Południowej, Dakoty Północnej i New Hampshire niezbyt licznie zamieszkałych przez Afroamerykanów. Ułożenie na wykresie pozostałych punktów zdaje się mieć charakter liniowy, ale potwierdzenie tej hipotezy wymaga próby dopasowania prostej regresji i zwizualizowania wyniku. 
+Dla zwiększenia przejrzystości i czytelności sporządzono nowy wykres. Zawiera on te same dane, lecz pozbawione obserwacji najbardziej odstających czyli D.C. i Hawajów.
+
+```{r, fig.cap = "\\label{fig:scatter_afam_murder_DC_Hawaii} Współczynnik morderstw w USA\n w zależności od udziału Afroamerykanów w populacji stanu\n z pominięciem Dystryktu Kolumbii i Hawajów.", echo=FALSE, fig.height=4, message=FALSE}
+scatter_afam_murder_DC_Hawaii
+```
+
+Prosta regresji dopasowana z użyciem wbudowanej funkcji geom_smooth() ma współczynniki $a=0.88586$, $b=2.8403$. Dzięki dodaniu jej do wykresu widać, że przypuszczenia o linowym charakterze zależności były słuszne. Faktycznie wraz ze wzrostem odsetka Afroamerykanów w rozważanych społeczeństwach w przybliżeniu liniowo wzrasta liczba popełnionych morderstw.
+
+W następnym kroku, chcąc przyjrzeć się współczynnikowi brutalnych przestępstw poszczególnych stanach, sporządzono dla niego analogiczny wykres i ponownie kolorami oznaczono najbardziej interesujące wartości.
+
+```{r, fig.cap = "\\label{fig:scatter_afam_violent} Współczynnik brutalnych przestępstw w USA\n w zależności od udziału Afroamerykanów w populacji stanu.", echo=FALSE, fig.height=4}
+scatter_afam_violent
+```
+
+Kształt powyższego wykresu \ref{fig:scatter_afam_violent} jest bardzo podobny do wykresu \ref{fig:scatter_afam_murder}. Hawaje ponownie charakteryzują się niskim współczynnikiem a D.C. zróżnicowanym, lecz nadal wyższym niż w pozostałych stanach. Najmniejsze wartości odnotowano w takich samych regionach jak dla morderstw. Ułożenie pozostałych punktów nie przywodzi na myśl żadnej konkretnej zależności, ale warto sprawdzić to poprzez dopasowanie krzywej wskazującej trend, zgodnie z którym współczynnik morderstw zmieniał się wraz ze wzrastającym odsetkiem Afroamerykanów w społeczeństwie. 
+
+```{r, fig.cap = "\\label{fig:scatter_afam_violent_DC_Hawaii} Współczynnik brutalnych przestępstw w USA w zależności od udziału Afroamerykanów w populacji stanu z pominięciem Dystryktu Kolumbii i Hawajów.", echo=FALSE, fig.height=4}
+scatter_afam_violent_DC_Hawaii
+```
+
+Tym razem krzywa najlepszego dopasowania nie jest linią prostą, lecz wielomianem interpolacyjnym szóstego stopnia. Widać, że współczynnik morderstw wzrasta wraz ze zwiększającą się populacją Afroamerykanów aż do osiągnięcia maksymalnej wartości dla około $5\%$. Następnie utrzymuje się na stałym poziomie i po przekroczeniu przez Afroamerykanów $10\%$ społeczeństwa powoli zaczyna spadać. 
+
+Podsumowując przeprowadzone w powyższym paragrafie rozumowanie można stwierdzić, że ani w przypadku morderstw ani brutalnych przestępstw nie można odkryć zależności, która dobrze opisałaby relację pomiędzy analizowanymi zmiennymi dla wszystkich stanów. Jednak po wykluczeniu najbardziej odstających obserwacji da się dostrzec pewne trendy. Współczynnik morderstw wzrasta liniowo wraz ze zwiększającą się populacją Afroamerykanów. Natomiast w przypadku brutalnych przestępstw nie można mówić o monotoniczności. Współczynnik ten po osiągnięciu maksimum przez pewien czas pozostaje na niemal stałym poziomie a następnie zaczyna spadać.
+
+## Wpływ efektywności sądownictwa na poziom przestępczości
+Współczynnikiem, który dotychczas ani razu nie pojawił się w raporcie jest współczynnik więźniów. Dostarcza on jednak na tyle ważnych informacji na temat bezpieczeństwa w danym regionie, że nie sposób pominąć go w rozważaniach. Na wykresach przedstawiono go na tle słupków prezentujących ilość poszczególnych przestępstw i oznaczono kolorem czerwonym. Do prezentacji wybrano 5 przykładowych stanów, które wyróżniono na omówionych wcześniej wykresach punktowych. 
+
+```{r, fig.cap = "\\label{fig:bar_pr2} Współczynnik więźniów w USA\n w stosunku do liczby popełnionych przestępstw.", echo=FALSE, fig.height=3}
+bar_pr2
+```
+
+Wykres \ref{fig:bar_pr2} przedstawia dane dla najniebezpieczniejszego i kilku najbezpieczniejszych stanów (zaklasyfikowanych w ten sposób za pomocą wcześniejszych wykresów punktowych). Tym, co łączy całą piątkę, jest udział poszczególnych czynów karalnych w przestępczości danego regionu. Za każdym razem pierwsze miejsce zajmują brutalne przestępstwa (średnio brutalne przestępstwa w USA stanowią $74.8\%$ ogólnej przestępczości), następnie rabunki  (średnio $24.05\%$) a na samym końcu morderstwa (średnio $1.15\%$).  Nie można zapomnieć, że nie wszystkie rabunki zostają ukarane osadzeniem w więzieniu. Zamiast tego sprawca może zostać obciążony grzywną lub obowiązkiem wykonywania prac społecznych. Trzeba więc brać pewną poprawkę przy ocenianiu skuteczności organów ścigania i systemu sądownictwa przez pryzmat współczynnika rabunków. Jednak patrząc na to, że nie jest on głównym czynnikiem wpływającym na wysokość przestępczości danego stanu (jest to wcześniej wspomniane $24.05\%$)  możemy na podstawie posiadanych danych dokonać takiej analizy.
+
+Omawiany wykres \ref{fig:bar_pr2} potwierdza wyciągnięty w podrozdziale o wpływie Afroamerykanów na poziom przestępczości wniosek o największym niebezpieczeństwie czyhającym na mieszkańców Waszyngtonu. Współczynnik osadzonych jest tam o ponad połowę niższy od współczynnika brutalnych przestępstw, a przecież w regionie tym występuje także dużo rabunków i morderstw. Oznacza to, że wielu sprawców, np. seryjni mordercy nadal przebywało na wolności i mogło dopuszczać się kolejnych przestępstw. Mogła zwiększyć się także grupa „jednorazowych przestępców”, którzy widząc bezkarność poprzedników dopuszczali się karalnych czynów. Za taki stan rzeczy można winić niewydajny system sądownictwa w Dystrykcie Kolumbii bądź nadal niewystarczające załogi policjantów. 
+
+```{r, fig.cap = "\\label{fig:bar_pr3} Współczynnik więźniów w USA\n w stosunku do liczby popełnionych przestępstw.",  echo=FALSE, fig.height=3}
+bar_pr3
+```
+
+Ciekawym przypadkiem są Hawaje. Tutaj również liczba osadzonych jest dość niska w porównaniu z razem wziętymi przestępstwami. Średnio mniej niż co drugi sprawca zostaje osadzony w więzieniu. Jednak są to wartości kilkukrotnie mniejsze niż dla omówionego wyżej D.C.
+
+W pozostałych trzech stanach, czyli tych o najniższej przestępczości, większość przestępców zostaje ukarana. To wywołuje w mieszkańcach większy lęk i zniechęca ich do popełniania przestępstw. Z kolei mniejsza liczba czynów karalnych redukuje liczbę dochodzeń i postępowań sądowych, co znacznie usprawnia działanie organów ścigania. W efekcie sprawy są wnikliwiej analizowane, a sprawcy ponoszą konsekwencje i koło się zamyka. Można zatem wysnuć wniosek, że liczba przestępstw jest odwrotnie proporcjonalna do liczby skazanych.
+
+## Wpływ wysokości pensji mieszkańców stanu na poziom przestępczości
+Analizowany zbiór danych zawiera także informacje na temat średnich zarobków mieszkańca danego stanu. Dlatego zasadne jest sprawdzenie, czy parametr ten wpływa jakkolwiek na liczbę popełnianych przestępstw. Na wykresie każda kropka odpowiada innemu rokowi i wskazuje, ile wynosi współczynnik przy danej wysokości przychodu. 
+
+```{r, fig.cap = "\\label{fig:scatter_income_murder} Zależność współczynnika morderstw od średnich zarobków w stanie.", echo=FALSE, fig.height=3}
+scatter_income_murder
+```
+
+Z wykresu \ref{fig:scatter_income_murder} wynika, że niezależnie od wysokości dochodu współczynnik morderstw tylko kilkukrotnie przekroczył $20\%$. Ponownie, dane dla Dystryktu Kolumbii są dużo wyższe i znacząco odbiegają od reszty obserwacji. Na tle pozostałych stanów jest to dobrze zarabiające społeczeństwo. Można zatem wysnuć wniosek, że nie istnieje wyraźna zależność między zamożnością społeczeństwa a liczbą popełnionych morderstw.
+
+```{r, fig.cap = "\\label{fig:scatter_income_violent} Zależność współczynnika brutalnych przestępstw od średnich zarobków w stanie.", echo=FALSE, fig.height=3}
+scatter_income_violent
+```
+
+Natomiast wykres \ref{fig:scatter_income_violent} pokazuje, że generalnie w przeliczeniu na 100 tysięcy osób popełniano mniej niż 1000 brutalnych przestępstw. Ponownie znacząco wyższe wartości odnotowano w Dystrykcie Kolumbii. Tym razem także nie można wyróżnić zależności między analizowanymi danymi. 
+
+Podsumowując wyciągnięte wnioski, stwierdza się, że za wysoki poziom niebezpieczeństwa w Dystrykcie Kolumbii odpowiada niska liczba osadzonych w porównaniu do sprawców. Innym czynnikiem, sprzyjającym rozwojowi przestępczości może być liczna populacja Afroamerykanów i wynikająca z tego agresja zarówno w ich kierunku jak i z ich strony. 
+
+# Podsumowanie
+Wszystkie przedstawione powyżej rozumowania, wykresy i wyciągnięte z nich wnioski pozwoliły kompletnie zrealizować wszystkie cele postawione na początku raportu. Wskazano, że najniebezpieczniejszym stanem jest Dystrykt Kolumbii, a przyczynami tego zjawiska jest znaczna grupa nieukaranych przestępców oraz liczna populacja Afroamerykanów i skierowana do nich bądź od nich agresja. Przeanalizowano jak z biegiem lat zmieniały się współczynniki morderstw i brutalnych przestępstw i znaleziono, że w pierwszej połowie lat 90. XX wieku nałożyły się na siebie wysokie wartości obu współczynników, a późniejszy spadek dodatkowo poparto autentycznymi wydarzeniami z historii Stanów Zjednoczonych. Wyciągnięto z danych, że w stanach z prawem do posiadania broni odnotowuje się niższe współczynniki dla wszystkich uwzględnionych rodzajów przestępstw. Realizacja kolejnego celu, jakim było zbadanie wpływu odsetka Afroamerykanów na poziom przestępczości zaowocowała znalezieniem przedziałów, dla których krzywe najlepszego dopasowania rosną, maleją lub są stałe. Dowiedziono także, że w najbezpieczniejszych stanach liczba przestępstw jest odwrotnie proporcjonalna do liczby skazanych, a w całym USA zarobki mieszkańców nie mają wpływu ani na liczbę morderstw ani na liczbę przestępstw.  
+Dodatkowo przy okazji realizowania celów projektu pokazano, jak wiele analiz można przeprowadzić przy użyciu metod statystyki opisowej i wizualizacji danych na wykresach a także zaprezentowano część możliwości, jakie daje w tej dziedzinie język R.  
